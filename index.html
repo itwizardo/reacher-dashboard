@@ -860,7 +860,9 @@
     }
   }
 
-  // Bulk verify
+  // Bulk verify — runs 5 emails in parallel for speed
+  const CONCURRENCY = 5;
+
   async function verifyBulk() {
     if (isProcessing) return;
     const emails = parseEmails(bulkArea.value);
@@ -876,25 +878,33 @@
     progPct.textContent = '0%';
 
     let done = 0;
-    for (const email of emails) {
-      try {
-        const data = await checkEmail(email);
-        results.unshift(parseResult(email, data));
-      } catch (err) {
-        results.unshift({ email, status: 'unknown', error: err.message, mxRecords: [] });
-      }
+    const total = emails.length;
+
+    function updateProgress() {
       done++;
-      const pct = Math.round((done / emails.length) * 100);
+      const pct = Math.round((done / total) * 100);
       progFill.style.width = pct + '%';
-      progLabel.textContent = done + ' / ' + emails.length;
+      progLabel.textContent = done + ' / ' + total;
       progPct.textContent = pct + '%';
       refreshTable();
-
-      // Small delay between requests to avoid overwhelming the API
-      if (done < emails.length) await sleep(500);
     }
 
-    toast('Bulk verification complete. ' + emails.length + ' emails checked.');
+    // Process in batches of CONCURRENCY
+    for (let i = 0; i < total; i += CONCURRENCY) {
+      const batch = emails.slice(i, i + CONCURRENCY);
+      const promises = batch.map(async email => {
+        try {
+          const data = await checkEmail(email);
+          results.unshift(parseResult(email, data));
+        } catch (err) {
+          results.unshift({ email, status: 'unknown', error: err.message, mxRecords: [] });
+        }
+        updateProgress();
+      });
+      await Promise.all(promises);
+    }
+
+    toast('Bulk verification complete. ' + total + ' emails checked.');
     bulkBtn.disabled = false;
     verifyBtn.disabled = false;
     bulkBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Verify All';
