@@ -401,6 +401,50 @@
   /* Error row */
   .error-row td { color: var(--invalid); font-style: italic; }
 
+  /* Filter tabs */
+  .filter-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .filter-tab {
+    padding: 8px 18px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .filter-tab:hover { border-color: var(--accent); color: var(--text-primary); }
+  .filter-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .filter-tab .count {
+    background: rgba(255,255,255,0.15);
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  .filter-tab.active .count { background: rgba(255,255,255,0.25); }
+
+  /* Export buttons group */
+  .export-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .btn-safe { border-color: var(--safe); color: var(--safe); }
+  .btn-safe:hover { background: var(--safe-bg); }
+  .btn-risky { border-color: var(--risky); color: var(--risky); }
+  .btn-risky:hover { background: var(--risky-bg); }
+  .btn-invalid { border-color: var(--invalid); color: var(--invalid); }
+  .btn-invalid:hover { background: var(--invalid-bg); }
+
   /* Toast notification */
   .toast {
     position: fixed;
@@ -556,10 +600,24 @@
         <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
         Results
       </div>
-      <button class="btn btn-secondary" onclick="exportCSV()" id="exportBtn" style="display:none">
-        <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-        Export CSV
-      </button>
+      <div class="export-group" id="exportGroup" style="display:none">
+        <button class="btn btn-secondary" onclick="exportCSV('all')">
+          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          Export All
+        </button>
+        <button class="btn btn-secondary btn-safe" onclick="exportCSV('safe')">↓ Export Safe</button>
+        <button class="btn btn-secondary btn-risky" onclick="exportCSV('risky')">↓ Export Risky</button>
+        <button class="btn btn-secondary btn-invalid" onclick="exportCSV('invalid')">↓ Export Invalid</button>
+      </div>
+    </div>
+
+    <!-- Filter tabs -->
+    <div class="filter-tabs" id="filterTabs" style="display:none">
+      <button class="filter-tab active" data-filter="all" onclick="setFilter('all')">All <span class="count" id="filterAll">0</span></button>
+      <button class="filter-tab" data-filter="safe" onclick="setFilter('safe')">✅ Safe <span class="count" id="filterSafe">0</span></button>
+      <button class="filter-tab" data-filter="risky" onclick="setFilter('risky')">⚠️ Risky <span class="count" id="filterRisky">0</span></button>
+      <button class="filter-tab" data-filter="invalid" onclick="setFilter('invalid')">❌ Invalid <span class="count" id="filterInvalid">0</span></button>
+      <button class="filter-tab" data-filter="unknown" onclick="setFilter('unknown')">❓ Unknown <span class="count" id="filterUnknown">0</span></button>
     </div>
     <div class="table-wrapper" id="tableWrapper" style="display:none">
       <table>
@@ -591,6 +649,7 @@
   // State
   const results = [];
   let isProcessing = false;
+  let activeFilter = 'all';
 
   // DOM refs
   const $ = id => document.getElementById(id);
@@ -734,11 +793,18 @@
     return d.innerHTML;
   }
 
+  function getFiltered() {
+    if (activeFilter === 'all') return results;
+    return results.filter(r => r.status === activeFilter || (activeFilter === 'unknown' && r.error));
+  }
+
   function refreshTable() {
-    body.innerHTML = results.map(renderRow).join('');
+    const filtered = getFiltered();
+    body.innerHTML = filtered.map(renderRow).join('');
     wrapper.style.display = results.length ? '' : 'none';
     empty.style.display = results.length ? 'none' : '';
-    exportBtn.style.display = results.length ? '' : 'none';
+    $('exportGroup').style.display = results.length ? '' : 'none';
+    $('filterTabs').style.display = results.length ? '' : 'none';
     refreshStats();
   }
 
@@ -747,10 +813,25 @@
     const safe = results.filter(r => r.status === 'safe').length;
     const risky = results.filter(r => r.status === 'risky').length;
     const invalid = results.filter(r => r.status === 'invalid').length;
+    const unknown = results.filter(r => r.status === 'unknown' || r.error).length;
     $('statTotal').textContent = total;
     $('statSafe').textContent = safe;
     $('statRisky').textContent = risky;
     $('statInvalid').textContent = invalid;
+    // Update filter tab counts
+    $('filterAll').textContent = total;
+    $('filterSafe').textContent = safe;
+    $('filterRisky').textContent = risky;
+    $('filterInvalid').textContent = invalid;
+    $('filterUnknown').textContent = unknown;
+  }
+
+  function setFilter(filter) {
+    activeFilter = filter;
+    document.querySelectorAll('.filter-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.filter === filter);
+    });
+    refreshTable();
   }
 
   // Single verify
@@ -831,11 +912,19 @@
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // Export CSV
-  function exportCSV() {
-    if (!results.length) return;
+  // Export CSV — supports 'all', 'safe', 'risky', 'invalid'
+  function exportCSV(filter) {
+    filter = filter || 'all';
+    let data;
+    if (filter === 'all') {
+      data = results;
+    } else {
+      data = results.filter(r => r.status === filter);
+    }
+    if (!data.length) return toast('No ' + filter + ' emails to export.');
+
     const headers = ['Email','Status','Deliverable','Disposable','Catch-All','MX Valid','MX Records','Error'];
-    const rows = results.map(r => [
+    const rows = data.map(r => [
       r.email,
       r.status,
       r.deliverable === null ? '' : r.deliverable,
@@ -850,10 +939,10 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'reacher-results-' + new Date().toISOString().slice(0,10) + '.csv';
+    a.download = 'reacher-' + filter + '-' + new Date().toISOString().slice(0,10) + '.csv';
     a.click();
     URL.revokeObjectURL(url);
-    toast('Results exported.');
+    toast(data.length + ' ' + filter + ' emails exported.');
   }
 </script>
 </body>
