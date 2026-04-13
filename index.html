@@ -471,7 +471,7 @@
     </div>
     <div class="api-config">
       <label for="apiUrl">API URL</label>
-      <input type="text" id="apiUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+      <input type="text" id="apiUrl" value="" placeholder="http://198.46.232.160:8080">
     </div>
   </div>
 </header>
@@ -611,6 +611,17 @@
   const progPct    = $('progressPercent');
   const emailCount = $('emailCount');
 
+  // Load saved API URL from localStorage
+  const savedUrl = localStorage.getItem('reacher_api_url');
+  if (savedUrl) apiUrl.value = savedUrl;
+  apiUrl.addEventListener('change', () => {
+    localStorage.setItem('reacher_api_url', apiUrl.value);
+    toast('API URL saved');
+  });
+  apiUrl.addEventListener('blur', () => {
+    localStorage.setItem('reacher_api_url', apiUrl.value);
+  });
+
   // Enter key support
   singleIn.addEventListener('keydown', e => { if (e.key === 'Enter') verifySingle(); });
 
@@ -668,7 +679,8 @@
 
   // API call
   async function checkEmail(email) {
-    const url = apiUrl.value.replace(/\/+$/, '') + '/v0/check_email';
+    const base = apiUrl.value.trim().replace(/\/+$/, '') || '';
+    const url = base + '/v0/check_email';
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
